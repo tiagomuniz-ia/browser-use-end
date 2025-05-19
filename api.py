@@ -18,11 +18,21 @@ class TaskRequest(BaseModel):
     task: str
     max_steps: int = 100
     max_actions_per_step: int = 4
-    model: str = "gemini-2.0-flash"  # Modelo padrão
 
 @app.post("/execute")
 async def execute_task(request: TaskRequest):
     try:
+        # Verifica a chave da API do Google
+        api_key = os.getenv('GOOGLE_API_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="GOOGLE_API_KEY não configurada")
+
+        # Configuração do LLM
+        llm = ChatGoogleGenerativeAI(
+            model='gemini-2.0-flash',
+            api_key=SecretStr(api_key)
+        )
+
         # Configuração do navegador
         browser = Browser(
             config=BrowserConfig(
@@ -30,16 +40,6 @@ async def execute_task(request: TaskRequest):
                     viewport_expansion=0,
                 )
             )
-        )
-
-        # Configuração do LLM
-        api_key = os.getenv('GOOGLE_API_KEY')
-        if not api_key:
-            raise HTTPException(status_code=500, detail="GOOGLE_API_KEY não configurada")
-
-        llm = ChatGoogleGenerativeAI(
-            model=request.model,
-            api_key=SecretStr(api_key)
         )
 
         # Criação e execução do agente
