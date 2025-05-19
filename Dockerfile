@@ -47,17 +47,7 @@ RUN echo 'Binary::apt::APT::Keep-Downloaded-Packages "1";' > /etc/apt/apt.conf.d
     && echo 'APT::Install-Suggests "0";' > /etc/apt/apt.conf.d/99no-intall-suggests \
     && rm -f /etc/apt/apt.conf.d/docker-clean
 
-# Create non-privileged user
-RUN groupadd --system $BROWSERUSE_USER \
-    && useradd --system --create-home --gid $BROWSERUSE_USER --groups audio,video $BROWSERUSE_USER \
-    && usermod -u "$DEFAULT_PUID" "$BROWSERUSE_USER" \
-    && groupmod -g "$DEFAULT_PGID" "$BROWSERUSE_USER" \
-    && mkdir -p /data \
-    && mkdir -p /home/$BROWSERUSE_USER/.config \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER \
-    && ln -s $DATA_DIR /home/$BROWSERUSE_USER/.config/browseruse
-
-# Install base dependencies
+# Install base dependencies including Chrome dependencies
 RUN apt-get update -qq \
     && apt-get install -qq -y --no-install-recommends \
         apt-transport-https \
@@ -72,7 +62,33 @@ RUN apt-get update -qq \
         iputils-ping \
         dnsutils \
         jq \
+        libnss3 \
+        libxss1 \
+        libasound2 \
+        libx11-xcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxrandr2 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libpangocairo-1.0-0 \
+        libgtk-3-0 \
+        libgbm1 \
+        xvfb \
+        fonts-liberation \
+        fonts-noto-color-emoji \
+        fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
+
+# Create non-privileged user
+RUN groupadd --system $BROWSERUSE_USER \
+    && useradd --system --create-home --gid $BROWSERUSE_USER --groups audio,video $BROWSERUSE_USER \
+    && usermod -u "$DEFAULT_PUID" "$BROWSERUSE_USER" \
+    && groupmod -g "$DEFAULT_PGID" "$BROWSERUSE_USER" \
+    && mkdir -p /data \
+    && mkdir -p /home/$BROWSERUSE_USER/.config \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER \
+    && ln -s $DATA_DIR /home/$BROWSERUSE_USER/.config/browseruse
 
 # Set up Python environment
 WORKDIR /app
@@ -81,18 +97,21 @@ COPY pyproject.toml /app/
 # Install Python dependencies
 RUN python -m venv $VENV_DIR \
     && . $VENV_DIR/bin/activate \
-    && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv
+    && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv playwright
 
-# Install Playwright and Chromium
+# Install Playwright with proper permissions
 RUN . $VENV_DIR/bin/activate \
-    && playwright install chromium --with-deps --no-shell
+    && PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright \
+    && playwright install --with-deps chromium \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER/.cache
 
 # Copy application code
 COPY . /app
 
 # Set up data directory
 RUN mkdir -p "$DATA_DIR/profiles/default" \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER "$DATA_DIR" "$DATA_DIR"/*
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER "$DATA_DIR" "$DATA_DIR"/* \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /app
 
 USER "$BROWSERUSE_USER"
 VOLUME "$DATA_DIR"
@@ -104,5 +123,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=20s --retries=3 \
     CMD curl --silent 'http://localhost:8000/health' | grep -q 'healthy'
 
-# Start the API
-CMD ["python", "api.py"]
+# Start the API with xvfb-run for headless support
+CMD ["xvfb-run", "--server-args='-screen 0 1280x800x24'", "python", "api.py"]
