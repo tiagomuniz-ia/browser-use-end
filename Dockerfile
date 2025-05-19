@@ -25,7 +25,8 @@ ENV TZ=UTC \
     PYTHONIOENCODING=UTF-8 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    IN_DOCKER=True
+    IN_DOCKER=True \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # User config
 ENV BROWSERUSE_USER="browseruse" \
@@ -69,6 +70,7 @@ RUN apt-get update -qq \
         libgtk-3-0 \
         libgbm1 \
         xvfb \
+        xauth \
         fonts-liberation \
         fonts-noto-color-emoji \
         fonts-noto-cjk \
@@ -81,8 +83,9 @@ RUN groupadd --system $BROWSERUSE_USER \
     && groupmod -g "$DEFAULT_PGID" "$BROWSERUSE_USER" \
     && mkdir -p /data \
     && mkdir -p /home/$BROWSERUSE_USER/.config \
-    && mkdir -p /home/$BROWSERUSE_USER/.cache \
+    && mkdir -p /ms-playwright \
     && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /ms-playwright \
     && ln -s $DATA_DIR /home/$BROWSERUSE_USER/.config/browseruse
 
 # Set up Python environment
@@ -94,8 +97,8 @@ RUN python -m venv $VENV_DIR \
     && . $VENV_DIR/bin/activate \
     && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv playwright \
     && playwright install-deps \
-    && PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright playwright install chromium \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER/.cache
+    && PLAYWRIGHT_BROWSERS_PATH=/ms-playwright playwright install chromium \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /ms-playwright
 
 # Copy application code
 COPY . /app
@@ -115,5 +118,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=20s --retries=3 \
     CMD curl --silent 'http://localhost:8000/health' | grep -q 'healthy'
 
-# Start the API with xvfb-run for headless support
-CMD ["xvfb-run", "--server-args='-screen 0 1280x800x24'", "python", "api.py"]
+# Start the API with xvfb-run
+CMD ["xvfb-run", "-a", "python", "api.py"]
