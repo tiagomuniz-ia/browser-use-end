@@ -9,11 +9,6 @@ LABEL name="browseruse-api" \
     homepage="https://github.com/your-repo/browser-use" \
     documentation="https://docs.browser-use.com"
 
-ARG TARGETPLATFORM
-ARG TARGETOS
-ARG TARGETARCH
-ARG TARGETVARIANT
-
 ######### Environment Variables #################################
 
 ENV TZ=UTC \
@@ -26,7 +21,7 @@ ENV TZ=UTC \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     IN_DOCKER=True \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    DISPLAY=:99
 
 # User config
 ENV BROWSERUSE_USER="browseruse" \
@@ -42,38 +37,39 @@ ENV CODE_DIR=/app \
 # Build shell config
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-o", "errtrace", "-o", "nounset", "-c"]
 
-# Install base dependencies including Chrome dependencies
-RUN apt-get update -qq \
-    && apt-get install -qq -y --no-install-recommends \
-        apt-transport-https \
-        ca-certificates \
-        apt-utils \
-        gnupg2 \
-        unzip \
-        curl \
-        wget \
-        grep \
-        nano \
-        iputils-ping \
-        dnsutils \
-        jq \
-        libnss3 \
-        libxss1 \
-        libasound2 \
-        libx11-xcb1 \
-        libxcomposite1 \
-        libxdamage1 \
-        libxrandr2 \
-        libatk1.0-0 \
-        libatk-bridge2.0-0 \
-        libpangocairo-1.0-0 \
-        libgtk-3-0 \
-        libgbm1 \
-        xvfb \
-        xauth \
-        fonts-liberation \
-        fonts-noto-color-emoji \
-        fonts-noto-cjk \
+# Install Chrome and dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg2 \
+    apt-transport-https \
+    ca-certificates \
+    xvfb \
+    xauth \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update && apt-get install -y \
+    google-chrome-stable \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libxshmfence1 \
+    libxss1 \
+    x11-apps \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-privileged user
@@ -83,22 +79,21 @@ RUN groupadd --system $BROWSERUSE_USER \
     && groupmod -g "$DEFAULT_PGID" "$BROWSERUSE_USER" \
     && mkdir -p /data \
     && mkdir -p /home/$BROWSERUSE_USER/.config \
-    && mkdir -p /ms-playwright \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /ms-playwright \
-    && ln -s $DATA_DIR /home/$BROWSERUSE_USER/.config/browseruse
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER
 
 # Set up Python environment
 WORKDIR /app
 COPY pyproject.toml /app/
 
-# Install Python dependencies and Playwright
+# Install Python dependencies
 RUN python -m venv $VENV_DIR \
     && . $VENV_DIR/bin/activate \
-    && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv playwright \
+    && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv playwright
+
+# Install Playwright
+RUN . $VENV_DIR/bin/activate \
     && playwright install-deps \
-    && PLAYWRIGHT_BROWSERS_PATH=/ms-playwright playwright install chromium \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /ms-playwright
+    && playwright install chromium
 
 # Copy application code
 COPY . /app
@@ -107,6 +102,10 @@ COPY . /app
 RUN mkdir -p "$DATA_DIR/profiles/default" \
     && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER "$DATA_DIR" "$DATA_DIR"/* \
     && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /app
+
+# Create Xauthority file
+RUN touch /home/$BROWSERUSE_USER/.Xauthority \
+    && chown $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER/.Xauthority
 
 USER "$BROWSERUSE_USER"
 VOLUME "$DATA_DIR"
@@ -118,5 +117,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=20s --retries=3 \
     CMD curl --silent 'http://localhost:8000/health' | grep -q 'healthy'
 
-# Start the API with xvfb-run
-CMD ["xvfb-run", "-a", "python", "api.py"]
+# Start Xvfb and the API
+CMD Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset & \
+    python api.py
