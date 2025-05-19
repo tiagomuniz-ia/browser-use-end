@@ -9,11 +9,21 @@ services:
       - IN_DOCKER=true
       - BROWSER_USE_LOGGING_LEVEL=info
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     volumes:
       - ./.env:/app/.env
+      - playwright-data:/ms-playwright
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    shm_size: '2gb'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  playwright-data:
