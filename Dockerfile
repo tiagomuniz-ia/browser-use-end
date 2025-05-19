@@ -41,12 +41,6 @@ ENV CODE_DIR=/app \
 # Build shell config
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-o", "errtrace", "-o", "nounset", "-c"]
 
-# Force apt to leave downloaded binaries in /var/cache/apt
-RUN echo 'Binary::apt::APT::Keep-Downloaded-Packages "1";' > /etc/apt/apt.conf.d/99keep-cache \
-    && echo 'APT::Install-Recommends "0";' > /etc/apt/apt.conf.d/99no-intall-recommends \
-    && echo 'APT::Install-Suggests "0";' > /etc/apt/apt.conf.d/99no-intall-suggests \
-    && rm -f /etc/apt/apt.conf.d/docker-clean
-
 # Install base dependencies including Chrome dependencies
 RUN apt-get update -qq \
     && apt-get install -qq -y --no-install-recommends \
@@ -87,6 +81,7 @@ RUN groupadd --system $BROWSERUSE_USER \
     && groupmod -g "$DEFAULT_PGID" "$BROWSERUSE_USER" \
     && mkdir -p /data \
     && mkdir -p /home/$BROWSERUSE_USER/.config \
+    && mkdir -p /home/$BROWSERUSE_USER/.cache \
     && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER \
     && ln -s $DATA_DIR /home/$BROWSERUSE_USER/.config/browseruse
 
@@ -94,15 +89,12 @@ RUN groupadd --system $BROWSERUSE_USER \
 WORKDIR /app
 COPY pyproject.toml /app/
 
-# Install Python dependencies
+# Install Python dependencies and Playwright
 RUN python -m venv $VENV_DIR \
     && . $VENV_DIR/bin/activate \
-    && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv playwright
-
-# Install Playwright with proper permissions
-RUN . $VENV_DIR/bin/activate \
-    && PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright \
-    && playwright install --with-deps chromium \
+    && pip install --no-cache-dir "browser-use[api]" fastapi uvicorn python-dotenv playwright \
+    && playwright install-deps \
+    && PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright playwright install chromium \
     && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER/.cache
 
 # Copy application code
