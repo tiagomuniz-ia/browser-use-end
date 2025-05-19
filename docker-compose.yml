@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  browser-use-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - IN_DOCKER=true
+      - BROWSER_USE_LOGGING_LEVEL=info
+    volumes:
+      - ./.env:/app/.env
+    restart: unless-stopped
