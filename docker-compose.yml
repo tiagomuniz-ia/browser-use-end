@@ -8,11 +8,10 @@ services:
     environment:
       - IN_DOCKER=true
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - DISPLAY=:99
+      # DISPLAY é definido no Dockerfile, mas pode ser ajustado aqui se necessário
     volumes:
       - ./.env:/app/.env
-      - /tmp/.X11-unix:/tmp/.X11-unix
-    shm_size: '2gb'
+    shm_size: '2gb' # Importante para Chromium
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
