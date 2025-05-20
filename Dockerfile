@@ -53,10 +53,10 @@ ENV PATH="/home/$BROWSERUSE_USER/.local/bin:$PATH"
 # Instalar dependências Python como o usuário da aplicação
 RUN pip install --no-cache-dir -e .
 
-# Instalar Playwright e suas dependências de navegador como o usuário da aplicação
+# Instalar Playwright e o NAVEGADOR (sem --with-deps)
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright
 RUN pip install --no-cache-dir playwright && \
-    playwright install --with-deps chromium
+    playwright install chromium
 
 # Voltar para root para permissões de diretório globais, se necessário
 USER root
