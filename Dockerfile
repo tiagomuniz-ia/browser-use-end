@@ -17,9 +17,13 @@ RUN apt-get update && apt-get install -y \
 # Criação do diretório da aplicação
 WORKDIR /app
 
-# Instalação das dependências Python
-COPY requirements.txt .
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
+# Instalação das dependências Python diretamente
+RUN python3 -m pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    python-dotenv \
+    "browser-use[api]" \
+    playwright
 
 # Copia dos arquivos da aplicação
 COPY . .
