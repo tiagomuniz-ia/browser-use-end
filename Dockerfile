@@ -30,6 +30,11 @@ RUN apt-get update -qq \
         gnupg2 \
         wget \
         xvfb \
+        xauth \  # Adicionado xauth
+        x11-xkb-utils \
+        xfonts-base \
+        xfonts-75dpi \
+        xfonts-100dpi \
         libnss3 \
         libxss1 \
         libasound2 \
@@ -60,11 +65,15 @@ RUN pip install --no-cache-dir -e . && \
 # Configurar diretórios e permissões
 RUN mkdir -p /data/profiles/default && \
     chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /data && \
-    chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /app
+    chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /app && \
+    # Criar diretório X11 e configurar permissões
+    mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
 
 USER $BROWSERUSE_USER
 
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    DISPLAY=:99
 
 # Executar com Xvfb
 CMD ["xvfb-run", "--server-args='-screen 0 1280x800x24'", "python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
