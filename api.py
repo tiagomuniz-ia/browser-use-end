@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import asyncio
 import os
 import logging
+import io
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import SecretStr
@@ -10,11 +11,9 @@ from browser_use import Agent, BrowserConfig
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContextConfig
 
-# Configuração de logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Carrega variáveis de ambiente
 load_dotenv()
 logger.info("Variáveis de ambiente carregadas")
 
@@ -27,67 +26,113 @@ class TaskRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    """Endpoint raiz para verificar se a API está funcionando"""
     logger.info("Endpoint raiz acessado")
     return {"status": "API está funcionando"}
 
 @app.get("/health")
 async def health_check():
-    """Endpoint para verificar a saúde da API"""
     logger.info("Health check realizado")
     return {"status": "healthy"}
 
 @app.post("/execute")
 async def execute_task(request: TaskRequest):
+    log_stream = io.StringIO()
+    root_logger = logging.getLogger()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    stream_handler = logging.StreamHandler(log_stream)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(logging.INFO)
+    root_logger.addHandler(stream_handler)
+    
+    captured_logs = ""
+    task_result = None
+    response_data = {}
+    # Inicializar browser fora do try para que esteja disponível no finally
+    browser_instance: Browser | None = None 
+    original_exception = None
+
     try:
         logger.info(f"Iniciando execução da tarefa: {request.task}")
         
-        # Verifica a chave da API do Google
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
             logger.error("GOOGLE_API_KEY não configurada")
             raise HTTPException(status_code=500, detail="GOOGLE_API_KEY não configurada")
 
         logger.info("Configurando LLM")
-        # Configuração do LLM
         llm = ChatGoogleGenerativeAI(
             model='gemini-2.0-flash',
             api_key=SecretStr(api_key)
         )
 
         logger.info("Configurando navegador")
-        # Configuração do navegador
-        browser = Browser(
+        # Atribuir à variável browser_instance
+        browser_instance = Browser(
             config=BrowserConfig(
                 new_context_config=BrowserContextConfig(
                     viewport_expansion=0,
-                    headless=True,  # Importante para Docker
+                    headless=True,
                 )
             )
         )
 
         logger.info("Criando agente")
-        # Criação e execução do agente
         agent = Agent(
             task=request.task,
             llm=llm,
             max_actions_per_step=request.max_actions_per_step,
-            browser=browser,
+            browser=browser_instance, # Usar browser_instance
         )
 
         logger.info("Executando tarefa")
-        # Executa a tarefa
-        result = await agent.run(max_steps=request.max_steps)
+        task_result = await agent.run(max_steps=request.max_steps)
         
         logger.info("Tarefa concluída com sucesso")
-        return {
+        response_data = {
             "status": "success",
-            "result": result
+            "result": task_result
         }
 
     except Exception as e:
-        logger.error(f"Erro durante a execução: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        original_exception = e # Guardar a exceção original
+        logger.error(f"Erro durante a execução: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            response_data = { "status": "error", "detail": e.detail }
+        else:
+            response_data = { "status": "error", "detail": str(e) }
+            
+    finally:
+        # Fechar o navegador explicitamente se ele foi instanciado
+        if browser_instance:
+            logger.info("Fechando navegador...")
+            try:
+                await browser_instance.close()
+                logger.info("Navegador fechado com sucesso.")
+            except Exception as close_exc:
+                logger.error(f"Erro ao fechar o navegador: {str(close_exc)}", exc_info=True)
+        
+        captured_logs = log_stream.getvalue()
+        root_logger.removeHandler(stream_handler)
+        stream_handler.close()
+        log_stream.close()
+
+    # Adicionar os logs à resposta final
+    if "logs" not in response_data: # Evitar sobrescrever se já foi colocado no detail de um HTTPException
+        response_data["logs"] = captured_logs
+
+    if original_exception:
+        if isinstance(original_exception, HTTPException):
+            # Atualiza o detail da HTTPException original para incluir os logs
+            if isinstance(original_exception.detail, dict):
+                 original_exception.detail["logs"] = captured_logs
+            else:
+                 original_exception.detail = {"message": original_exception.detail, "logs": captured_logs}
+            raise original_exception
+        else:
+            # Para outras exceções, cria uma nova HTTPException com os logs
+            raise HTTPException(status_code=500, detail={"message": str(original_exception), "logs": captured_logs})
+
+    return response_data
 
 if __name__ == "__main__":
     import uvicorn
