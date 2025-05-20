@@ -14,22 +14,18 @@ ENV TZ=UTC \
 # Instalar dependências do sistema essenciais para Xvfb, X11 e Playwright
 RUN apt-get update -qq && \
     apt-get install -qq -y --no-install-recommends \
-    # Essenciais para Xvfb e X11
     xvfb \
     xauth \
     x11-xkb-utils \
     xfonts-base \
-    # xfonts-cyrillic  # Removido pois não encontrado
     xfonts-100dpi \
     xfonts-75dpi \
     xfonts-scalable \
-    # Dependências comuns do Playwright e navegadores
     libnss3 libxss1 libasound2 libx11-xcb1 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
     libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libfontconfig1 \
     libfreetype6 libjpeg62-turbo libpng16-16 libxext6 libxrender1 libxtst6 \
     libglib2.0-0 libgtk-3-0 libnspr4 libexpat1 \
-    # Utilitários
     wget curl gnupg2 ca-certificates apt-transport-https && \
     rm -rf /var/lib/apt/lists/*
 
@@ -48,8 +44,13 @@ COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER pyproject.toml README.md ./
 COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER browser_use ./browser_use
 COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER api.py ./
 
-# Instalar dependências Python como o usuário da aplicação
+# Mudar para o usuário da aplicação
 USER $BROWSERUSE_USER
+
+# Adicionar o diretório local de binários do usuário ao PATH
+ENV PATH="/home/$BROWSERUSE_USER/.local/bin:$PATH"
+
+# Instalar dependências Python como o usuário da aplicação
 RUN pip install --no-cache-dir -e .
 
 # Instalar Playwright e suas dependências de navegador como o usuário da aplicação
@@ -57,11 +58,12 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright
 RUN pip install --no-cache-dir playwright && \
     playwright install --with-deps chromium
 
+# Voltar para root para permissões de diretório globais, se necessário
 USER root
 RUN mkdir -p /data/profiles/default && \
     chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /data
+# Voltar para o usuário da aplicação para a execução do CMD
 USER $BROWSERUSE_USER
-
 
 ENV DISPLAY=:99
 
