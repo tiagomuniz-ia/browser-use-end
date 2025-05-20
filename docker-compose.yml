@@ -6,7 +6,16 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - IN_DOCKER=true
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - DISPLAY=:99
     volumes:
       - ./.env:/app/.env
+      - /tmp/.X11-unix:/tmp/.X11-unix
     shm_size: '2gb'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
