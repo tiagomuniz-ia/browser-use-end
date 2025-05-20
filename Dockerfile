@@ -19,7 +19,7 @@ RUN apt-get update -qq && \
     xauth \
     x11-xkb-utils \
     xfonts-base \
-    xfonts-cyrillic \
+    # xfonts-cyrillic  # Removido pois não encontrado
     xfonts-100dpi \
     xfonts-75dpi \
     xfonts-scalable \
@@ -53,7 +53,6 @@ USER $BROWSERUSE_USER
 RUN pip install --no-cache-dir -e .
 
 # Instalar Playwright e suas dependências de navegador como o usuário da aplicação
-# PLAYWRIGHT_BROWSERS_PATH será automaticamente configurado para o cache do usuário
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright
 RUN pip install --no-cache-dir playwright && \
     playwright install --with-deps chromium
@@ -67,6 +66,4 @@ USER $BROWSERUSE_USER
 ENV DISPLAY=:99
 
 # Comando para iniciar a aplicação com Xvfb
-# --auto-servernum tenta encontrar um número de display livre
-# --server-num=0 especifica um número de display (se :99 for problemático)
 CMD ["xvfb-run", "--auto-servernum", "--server-args='-screen 0 1280x800x24'", "python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
