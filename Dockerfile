@@ -1,71 +1,63 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-bookworm
 
-ENV TZ=UTC \
-    LANGUAGE=en_US:en \
-    LC_ALL=C.UTF-8 \
-    LANG=C.UTF-8 \
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
     DEBIAN_FRONTEND=noninteractive \
-    PYTHONIOENCODING=UTF-8 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    IN_DOCKER=True
+    # Define o display para o Xvfb
+    DISPLAY=:99
 
-# Instalar dependências do sistema essenciais para Xvfb, X11 e Playwright
+# Instalação das dependências do sistema, incluindo xvfb, xauth, dbus e outras bibliotecas gráficas
 RUN apt-get update -qq && \
     apt-get install -qq -y --no-install-recommends \
     xvfb \
     xauth \
+    dbus-x11 \  # Importante para a comunicação com o D-Bus
     x11-xkb-utils \
     xfonts-base \
     xfonts-100dpi \
     xfonts-75dpi \
     xfonts-scalable \
+    # Dependências do Playwright/Chromium
     libnss3 libxss1 libasound2 libx11-xcb1 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
     libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libfontconfig1 \
     libfreetype6 libjpeg62-turbo libpng16-16 libxext6 libxrender1 libxtst6 \
     libglib2.0-0 libgtk-3-0 libnspr4 libexpat1 \
+    # Utilitários
     wget curl gnupg2 ca-certificates apt-transport-https && \
     rm -rf /var/lib/apt/lists/*
 
-# Criar usuário não-privilegiado
-ENV BROWSERUSE_USER="browseruse" \
-    APP_USER_UID=911 \
-    APP_USER_GID=911
-
-RUN groupadd --system --gid $APP_USER_GID $BROWSERUSE_USER && \
-    useradd --system --uid $APP_USER_UID --gid $APP_USER_GID --create-home --shell /bin/bash $BROWSERUSE_USER
+# Criação do usuário não-root
+RUN groupadd --system --gid 911 browseruse && \
+    useradd --system --uid 911 --gid 911 --create-home --shell /bin/bash browseruse
 
 WORKDIR /app
 
-# Copiar arquivos do projeto
-COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER pyproject.toml README.md ./
-COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER browser_use ./browser_use
-COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER api.py ./
+# Copia os arquivos de configuração do projeto
+COPY --chown=browseruse:browseruse pyproject.toml README.md ./
 
-# Mudar para o usuário da aplicação
-USER $BROWSERUSE_USER
+# Copia o código da aplicação
+COPY --chown=browseruse:browseruse browser_use ./browser_use
+COPY --chown=browseruse:browseruse api.py ./
 
-# Adicionar o diretório local de binários do usuário ao PATH
-ENV PATH="/home/$BROWSERUSE_USER/.local/bin:$PATH"
+# Muda para o usuário não-root
+USER browseruse
 
-# Instalar dependências Python como o usuário da aplicação
-RUN pip install --no-cache-dir -e .
+# Define o PATH para incluir os binários instalados pelo pip do usuário
+ENV PATH="/home/browseruse/.local/bin:${PATH}"
 
-# Instalar Playwright e o NAVEGADOR (sem --with-deps)
-ENV PLAYWRIGHT_BROWSERS_PATH=/home/$BROWSERUSE_USER/.cache/ms-playwright
-RUN pip install --no-cache-dir playwright && \
-    playwright install chromium
+# Instala as dependências Python e o browser-use em modo editável
+RUN pip install --no-cache-dir --user -e .[api] && \
+    # Instala o Playwright e o Chromium (como usuário 'browseruse')
+    # O --with-deps já foi tratado pela instalação de sistema, mas mantemos para garantir
+    playwright install --with-deps chromium
 
-# Voltar para root para permissões de diretório globais, se necessário
-USER root
-RUN mkdir -p /data/profiles/default && \
-    chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /data
-# Voltar para o usuário da aplicação para a execução do CMD
-USER $BROWSERUSE_USER
+# Expõe a porta da aplicação
+EXPOSE 8000
 
-ENV DISPLAY=:99
-
-# Comando para iniciar a aplicação com Xvfb
-CMD ["xvfb-run", "--auto-servernum", "--server-args='-screen 0 1280x800x24'", "python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando para iniciar a aplicação com xvfb-run
+# O -a faz o Xvfb escolher um número de display automaticamente se o :99 estiver ocupado
+# O -s "-screen 0 1920x1080x24" define a resolução da tela virtual
+CMD ["xvfb-run", "-a", "-s", "-screen 0 1920x1080x24", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
