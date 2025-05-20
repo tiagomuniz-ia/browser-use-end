@@ -73,8 +73,9 @@ USER browseruse
 ENV PATH="/home/browseruse/.local/bin:${PATH}"
 
 # Instala as dependências Python e o browser-use em modo editável
+# Removemos o --with-deps do playwright install
 RUN pip install --no-cache-dir --user -e .[api] && \
-    playwright install --with-deps chromium
+    playwright install chromium
 
 # Expõe a porta da aplicação
 EXPOSE 8000
