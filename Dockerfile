@@ -30,7 +30,7 @@ RUN apt-get update -qq \
         gnupg2 \
         wget \
         xvfb \
-        xauth \  # Adicionado xauth
+        xauth \
         x11-xkb-utils \
         xfonts-base \
         xfonts-75dpi \
@@ -66,7 +66,6 @@ RUN pip install --no-cache-dir -e . && \
 RUN mkdir -p /data/profiles/default && \
     chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /data && \
     chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /app && \
-    # Criar diretório X11 e configurar permissões
     mkdir -p /tmp/.X11-unix && \
     chmod 1777 /tmp/.X11-unix
 
