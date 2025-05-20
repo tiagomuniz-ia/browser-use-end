@@ -51,7 +51,6 @@ async def execute_task(request: TaskRequest):
     stream_handler.setLevel(logging.INFO)
     root_logger.addHandler(stream_handler)
     
-    captured_logs = "" # Esta variável não está sendo usada, pode ser removida.
     task_result = None
     response_data = {}
     browser_instance: Browser | None = None 
